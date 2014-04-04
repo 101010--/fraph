@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "file": "user.js",
+  "sourceRoot": "../../src/controllers/",
+  "sources": [
+    "user.coffee"
+  ],
+  "names": [],
+  "mappings": "AA+JsC;CAAA;CAAA"
+}

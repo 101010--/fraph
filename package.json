@@ -1,0 +1,45 @@
+{
+  "name": "godspeed",
+  "version": "0.0.42",
+  "private": true,
+  "scripts": {
+    "test": "mocha --require should --compilers coffee:coffee-script --colors"
+  },
+  "dependencies": {
+    "express": "3.x",
+    "jade": "0.30.x",
+    "connect-assets": "2.4.x",
+    "socket.io": "^0.9.16",
+    "stylus": "0.32.x",
+    "nib": "0.9.x",
+    "mongoose": "3.6.x",
+    "less": "*",
+    "d3": "*",
+    "connect": "^2.14.3",
+    "async": "^0.6.2"
+  },
+  "devDependencies": {
+    "coffee-script": "*",
+    "mocha": "*",
+    "should": "*",
+    "supertest": "*",
+    "request": "*",
+    "grunt": "~0.4.1",
+    "grunt-contrib-coffee": "~0.7.0",
+    "grunt-contrib-jade": "~0.8.0",
+    "grunt-contrib-less": "~0.7.0",
+    "grunt-contrib-watch": "~0.5.1",
+    "grunt-express-server": "~0.4.2",
+    "grunt-contrib-concat": "~0.3.0",
+    "grunt-contrib-uglify": "~0.2.2",
+    "grunt-contrib-mincss": "~0.3.2",
+    "grunt-sftp-deploy": "0.0.9",
+    "grunt-contrib-compress": "~0.6.0",
+    "grunt-contrib-copy": "~0.5.0",
+    "grunt-shell": "~0.6.4"
+  },
+  "engines": {
+    "node": "*",
+    "npm": "*"
+  }
+}
