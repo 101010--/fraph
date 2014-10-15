@@ -1,10 +1,10 @@
 (function() {
-  var App, app, colors, connected, height, sio, width,
+  var App, Node, app, colors, connected, height, n, sio, width,
     __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 
   width = window.innerWidth;
 
-  height = window.innerHeight;
+  height = window.innerHeight - 4;
 
   sio = io.connect();
 
@@ -12,9 +12,173 @@
     return console.error('Unable to connect Socket.IO', reason);
   });
 
+  Node = (function() {
+    function Node(app) {
+      this.app = app;
+      this.modRm = __bind(this.modRm, this);
+      this.modOk = __bind(this.modOk, this);
+      this.Attr = __bind(this.Attr, this);
+      this.titre = ko.observable('');
+      this.attr = ko.observableArray([]);
+      this.newAttr = ko.observable('');
+    }
+
+    Node.prototype.Attr = function(name, val, del) {
+      var at, exist, i, x, y, _i, _j, _k, _len, _len1, _ref, _ref1, _results;
+      if (del == null) {
+        del = false;
+      }
+      if (typeof name === "string") {
+        if (val != null) {
+          return this.attr.push({
+            name: name,
+            val: ko.observable(val)
+          });
+        } else {
+          at = ko.toJS(this.attr);
+          console.log(at);
+          for (i = _i = 0, _ref = at.length; 0 <= _ref ? _i < _ref : _i > _ref; i = 0 <= _ref ? ++_i : --_i) {
+            x = at[i];
+            if (x.name === name) {
+              if (del) {
+                this.attr.splice(i, 1);
+                return true;
+              }
+              return x.val();
+            }
+          }
+          return false;
+        }
+      } else {
+        _results = [];
+        for (_j = 0, _len = name.length; _j < _len; _j++) {
+          x = name[_j];
+          exist = false;
+          _ref1 = this.attr();
+          for (_k = 0, _len1 = _ref1.length; _k < _len1; _k++) {
+            y = _ref1[_k];
+            if (y.name === x.name) {
+              exist = true;
+              y.val(x.val || '');
+            }
+          }
+          if (!exist) {
+            _results.push(this.attr.push({
+              name: x.name,
+              val: ko.observable(x.val || '')
+            }));
+          } else {
+            _results.push(void 0);
+          }
+        }
+        return _results;
+      }
+    };
+
+    Node.prototype.modOk = function() {
+      if (!this.app.selected_node) {
+        return;
+      }
+      this.app.selected_node.text = this.attr()[0].val();
+      console.log(ko.toJS(this.attr().slice(1)));
+      this.app.restart();
+      if (this.newAttr() !== '') {
+        this.Attr(this.newAttr(), '');
+        this.newAttr('');
+      }
+      this.app.selected_node.attr = ko.toJS(this.attr().slice(1));
+      return sio.emit('editNode', this.app.selected_node);
+    };
+
+    Node.prototype.modRm = function(th) {
+      console.log(th);
+      this.Attr(th.name, void 0, true);
+      return this.app.selected_node.attr = ko.toJS(this.attr().slice(1));
+    };
+
+    return Node;
+
+  })();
+
   colors = d3.scale.category10();
 
   App = (function() {
+    App.prototype.svgDblclick = function() {
+      var node,
+        _this = this;
+      this.svg.classed('active', true);
+      if (d3.event.ctrlKey || this.mousedown_node || this.mousedown_link) {
+        return;
+      }
+      node = {
+        reflexive: false
+      };
+      node.x = d3.event.offsetX;
+      node.y = d3.event.offsetY;
+      return sio.emit('addNode', node, function(res) {
+        if (res == null) {
+          return;
+        }
+        node.id = res;
+        _this.nodes.push(node);
+        _this.selected_link = void 0;
+        _this.selected_node = node;
+        $('#texter').focus();
+        return _this.restart();
+      });
+    };
+
+    App.prototype.svgMouseMove = function() {
+      console.log("MM");
+      if (this.mousedown_node) {
+        this.drag_line.attr('d', 'M' + this.mousedown_node.dx + ',' + this.mousedown_node.dy + 'L' + d3.event.offsetX + ',' + d3.event.offsetY);
+        return this.restart();
+      } else if (this.mousedown_svg.x != null) {
+        this.delta.x += d3.event.offsetX - this.mousedown_svg.x;
+        this.delta.y += d3.event.offsetY - this.mousedown_svg.y;
+        console.log("toto");
+        this.mousedown_svg.x = d3.event.offsetX;
+        this.mousedown_svg.y = d3.event.offsetY;
+        return this.restart();
+      }
+    };
+
+    App.prototype.svgMouseDown = function() {
+      return this.mousedown_svg = {
+        x: d3.event.offsetX,
+        y: d3.event.offsetY
+      };
+    };
+
+    App.prototype.svgMouseUp = function() {
+      if (this.mousedown_node) {
+        this.drag_line.classed('hidden', true).style('marker-end', '');
+      }
+      this.svg.classed('active', false);
+      this.mousedown_svg = {};
+      return this.resetMouseVars();
+    };
+
+    App.prototype.svgMouseWheel = function() {
+      if (d3.event.wheelDelta > 0) {
+        this.scale += 0.025;
+      } else if (d3.event.wheelDelta < 0) {
+        this.scale -= 0.025;
+      }
+      this.restart();
+      return console.log(d3.event);
+    };
+
+    App.prototype.initSvg = function() {
+      this.svg = d3.select('body').append('svg').attr('width', width).attr('height', height);
+      this.svg.append('svg:defs').append('svg:marker').attr('id', 'end-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 6).attr('markerWidth', 3).attr('markerHeight', 3).attr('orient', 'auto').append('svg:path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#000');
+      this.svg.append('svg:defs').append('svg:marker').attr('id', 'start-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 4).attr('markerWidth', 3).attr('markerHeight', 3).attr('orient', 'auto').append('svg:path').attr('d', 'M10,-5L0,0L10,5').attr('fill', '#000');
+      this.drag_line = this.svg.append('svg:path').attr('class', 'link dragline hidden').attr('d', 'M0,0L0,0');
+      this.path = this.svg.append('svg:g').selectAll('path');
+      this.circle = this.svg.append('svg:g').selectAll('g');
+      return this.svg.on('dblclick', this.svgDblclick).on('mousemove', this.svgMouseMove).on('mouseup', this.svgMouseUp).on('mousedown', this.svgMouseDown).on('wheel.zoom', this.svgMouseWheel);
+    };
+
     function App() {
       this.changeText = __bind(this.changeText, this);
       this.keyup = __bind(this.keyup, this);
@@ -23,61 +187,29 @@
       this.restart = __bind(this.restart, this);
       this.tick = __bind(this.tick, this);
       this.resetMouseVars = __bind(this.resetMouseVars, this);
-      var th,
-        _this = this;
-      this.lastKeyDown = -1;
-      this.svg = d3.select('body').append('svg').attr('width', width).attr('height', height);
-      this.nodes = [];
-      this.links = [];
-      this.force = d3.layout.force().nodes(this.nodes).links(this.links).size([width, height]).linkDistance(50).charge(-200).on('tick', this.tick);
-      this.svg.append('svg:defs').append('svg:marker').attr('id', 'end-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 6).attr('markerWidth', 3).attr('markerHeight', 3).attr('orient', 'auto').append('svg:path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#000');
-      this.svg.append('svg:defs').append('svg:marker').attr('id', 'start-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 4).attr('markerWidth', 3).attr('markerHeight', 3).attr('orient', 'auto').append('svg:path').attr('d', 'M10,-5L0,0L10,5').attr('fill', '#000');
-      this.drag_line = this.svg.append('svg:path').attr('class', 'link dragline hidden').attr('d', 'M0,0L0,0');
-      this.path = this.svg.append('svg:g').selectAll('path');
-      this.circle = this.svg.append('svg:g').selectAll('g');
+      this.initSvg = __bind(this.initSvg, this);
+      this.svgMouseWheel = __bind(this.svgMouseWheel, this);
+      this.svgMouseUp = __bind(this.svgMouseUp, this);
+      this.svgMouseDown = __bind(this.svgMouseDown, this);
+      this.svgMouseMove = __bind(this.svgMouseMove, this);
+      this.svgDblclick = __bind(this.svgDblclick, this);
       this.selected_node = null;
       this.selected_link = null;
       this.mousedown_link = null;
       this.mousedown_node = null;
       this.mouseup_node = null;
-      th = this;
+      this.mousedown_svg = {};
+      this.delta = {
+        x: 0,
+        y: 0
+      };
+      this.scale = 1;
+      this.lastKeyDown = -1;
+      this.nodes = [];
+      this.links = [];
+      this.initSvg();
+      this.force = d3.layout.force().nodes(this.nodes).links(this.links).size([width, height]).linkDistance(150).charge(-500).on('tick', this.tick);
       d3.select(window).on('keydown', this.keydown).on('keyup', this.keyup);
-      this.svg.on('dblclick', function() {
-        var node, point;
-        th.svg.classed('active', true);
-        if (d3.event.ctrlKey || th.mousedown_node || th.mousedown_link) {
-          return;
-        }
-        point = d3.mouse(this);
-        node = {
-          reflexive: false
-        };
-        node.x = point[0];
-        node.y = point[1];
-        return sio.emit('addNode', node, function(res) {
-          if (res == null) {
-            return;
-          }
-          node.id = res;
-          th.nodes.push(node);
-          th.selected_link = void 0;
-          th.selected_node = node;
-          $('#texter').focus();
-          return th.restart();
-        });
-      }).on('mousemove', function() {
-        if (!th.mousedown_node) {
-          return;
-        }
-        th.drag_line.attr('d', 'M' + th.mousedown_node.x + ',' + th.mousedown_node.y + 'L' + d3.mouse(this)[0] + ',' + d3.mouse(this)[1]);
-        return th.restart();
-      }).on('mouseup', function() {
-        if (_this.mousedown_node) {
-          _this.drag_line.classed('hidden', true).style('marker-end', '');
-        }
-        _this.svg.classed('active', false);
-        return _this.resetMouseVars();
-      });
     }
 
     App.prototype.resetMouseVars = function() {
@@ -87,23 +219,36 @@
     };
 
     App.prototype.tick = function() {
+      var node, _i, _len, _ref,
+        _this = this;
+      _ref = this.nodes;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        node = _ref[_i];
+        node.dx = node.x * this.scale;
+        node.dx = node.dx + this.delta.x;
+        node.dy = node.y * this.scale;
+        node.dy = node.dy + this.delta.y;
+      }
       this.path.attr('d', function(d) {
         var deltaX, deltaY, dist, normX, normY, sourcePadding, sourceX, sourceY, targetPadding, targetX, targetY;
-        deltaX = d.target.x - d.source.x;
-        deltaY = d.target.y - d.source.y;
+        deltaX = d.target.dx - d.source.dx;
+        deltaY = d.target.dy - d.source.dy;
         dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         normX = deltaX / dist;
         normY = deltaY / dist;
         sourcePadding = d.left ? 17 : 12;
         targetPadding = d.right ? 17 : 12;
-        sourceX = d.source.x + (sourcePadding * normX);
-        sourceY = d.source.y + (sourcePadding * normY);
-        targetX = d.target.x - (targetPadding * normX);
-        targetY = d.target.y - (targetPadding * normY);
+        sourceX = d.source.dx + (sourcePadding * normX);
+        sourceY = d.source.dy + (sourcePadding * normY);
+        targetX = d.target.dx - (targetPadding * normX);
+        targetY = d.target.dy - (targetPadding * normY);
         return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY;
       });
       return this.circle.attr('transform', function(d) {
-        return 'translate(' + d.x + ',' + d.y + ')';
+        var dx, dy;
+        dx = d.dx - d.width / 2;
+        dy = d.dy - d.height / 2;
+        return "translate(" + dx + ", " + dy + ")";
       });
     };
 
@@ -157,20 +302,20 @@
       this.circle = this.circle.data(this.nodes, function(d) {
         return d.id;
       });
-      this.circle.selectAll('circle').style('fill', function(d) {
+      this.circle.selectAll('rect').style('fill', function(d) {
         if (d === th.selected_node) {
           return d3.rgb(colors(d.id)).brighter().toString();
         } else {
           return colors(d.id);
         }
       }).classed('reflexive', function(d) {
-        return d.reflexive;
+        return d.fixed;
       });
       this.circle.selectAll('text').text(function(d) {
         return d.text;
       });
       g = this.circle.enter().append('svg:g');
-      g.append('svg:circle').attr('class', 'node').attr('r', 12).style('fill', function(d) {
+      g.append('svg:rect').attr('class', 'node').style('fill', function(d) {
         if (d === th.selected_node) {
           return d3.rgb(colors(d.id)).brighter().toString();
         } else {
@@ -179,29 +324,20 @@
       }).style('stroke', function(d) {
         return d3.rgb(colors(d.id)).darker().toString();
       }).classed('reflexive', function(d) {
-        return d.reflexive;
+        return d.reflexive != null;
       }).on('mouseover', function(d) {
-        if (!th.mousedown_node || d === th.mousedown_node) {
-          return;
-        }
-        return d3.select(this).attr('transform', 'scale(1.1)');
+        console.log("TOTOTOT");
+        return d3.select(this).attr('transform', 'scale(1.5)');
       }).on('mouseout', function(d) {
-        if (!th.mousedown_node || d === th.mousedown_node) {
-          return;
-        }
         return d3.select(this).attr('transform', '');
       }).on('mousedown', function(d) {
+        th.mousedown_node = d;
+        th.selected_node = th.mousedown_node;
+        th.selected_link = null;
         if (d3.event.ctrlKey) {
           return;
         }
-        th.mousedown_node = d;
-        if (th.mousedown_node === th.selected_node) {
-          th.selected_node = null;
-        } else {
-          th.selected_node = th.mousedown_node;
-        }
-        th.selected_link = null;
-        th.drag_line.style('marker-end', 'url(#end-arrow)').classed('hidden', false).attr('d', 'M' + th.mousedown_node.x + ',' + th.mousedown_node.y + 'L' + th.mousedown_node.x + ',' + th.mousedown_node.y);
+        th.drag_line.style('marker-end', 'url(#end-arrow)').classed('hidden', false).attr('d', 'M' + th.mousedown_node.dx + ',' + th.mousedown_node.dy + 'L' + th.mousedown_node.dx + ',' + th.mousedown_node.dy);
         return th.restart();
       }).on('mouseup', function(d) {
         var direction, link, source, target;
@@ -255,8 +391,22 @@
       g.append('svg:text').attr('x', 0).attr('y', 4).attr('class', 'id').text(function(d) {
         return d.text;
       });
+      this.circle.selectAll('rect').attr('width', function(d) {
+        return d.width = $(this).next().innerWidth() + 8;
+      }).attr('height', function(d) {
+        return d.height = $(this).next().innerHeight() + 8;
+      }).attr('rx', 4).attr('ry', 4);
+      this.circle.selectAll('text').attr('x', function(d) {
+        return $(this).innerWidth() / 2 + 4;
+      }).attr('y', function(d) {
+        return $(this).innerHeight() + 2;
+      });
       this.circle.exit().remove();
-      return this.force.start();
+      if (!this.svg.classed('ctrl')) {
+        return this.force.start();
+      } else {
+        return this.tick();
+      }
     };
 
     App.prototype.spliceLinksForNode = function(node) {
@@ -272,6 +422,7 @@
     };
 
     App.prototype.keydown = function() {
+      var _this = this;
       if ($('#texter:focus')[0] != null) {
         if (d3.event.keyCode === 13) {
           this.changeText($('#texter:focus').val());
@@ -286,7 +437,18 @@
         }
         this.lastKeyDown = d3.event.keyCode;
         if (d3.event.keyCode === 17) {
-          this.circle.call(this.force.drag);
+          this.circle.call(d3.behavior.drag().on("dragstart", function() {
+            return _this.force.stop();
+          }).on("drag", function() {
+            console.log("d", d3.event);
+            _this.mousedown_node.px += d3.event.dx / _this.scale;
+            _this.mousedown_node.py += d3.event.dy / _this.scale;
+            _this.mousedown_node.x += d3.event.dx / _this.scale;
+            _this.mousedown_node.y += d3.event.dy / _this.scale;
+            return _this.tick();
+          }).on("dragend", function() {
+            return _this.force.resume();
+          }));
           this.svg.classed('ctrl', true);
         }
         console.log(d3.event.keyCode);
@@ -331,8 +493,23 @@
               sio.emit('editLink', this.selected_link);
             }
             return this.restart();
+          case 83:
+            this.selected_node.fixed = !this.selected_node.fixed;
+            return sio.emit('editNode', this.selected_node);
           case 13:
-            return $('#texter').focus();
+            if ($('#myModal').attr("aria-hidden") === "true") {
+              $('#myModal').modal('toggle');
+              n.titre(this.selected_node.text);
+              n.attr([]);
+              n.Attr("titre", n.titre());
+              if (this.selected_node.attr != null) {
+                n.Attr(this.selected_node.attr);
+              }
+              return console.log(this.selected_node);
+            } else {
+              $('input').blur();
+              return $('#modOk').click();
+            }
         }
       }
     };
@@ -353,6 +530,7 @@
         return;
       }
       this.selected_node.text = text;
+      console.log(this.selected_node);
       this.restart();
       return sio.emit('editNode', this.selected_node);
     };
@@ -362,6 +540,10 @@
   })();
 
   window.app = app = new App();
+
+  window.n = n = new Node(app);
+
+  ko.applyBindings(n);
 
   connected = false;
 
@@ -376,6 +558,7 @@
 
   sio.on('graphInit', function(graph) {
     var i, len, link, node, _i, _j, _len, _len1, _ref, _ref1;
+    console.log(graph);
     connected = true;
     _ref = graph.nodes;
     for (_i = 0, _len = _ref.length; _i < _len; _i++) {

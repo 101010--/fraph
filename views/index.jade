@@ -1,3 +1,23 @@
 extends layout
 block content
-	input#texter(type="text")
+
+	.modal.fade#myModal(tabindex="-1", role="dialog", aria-labelledby="myModalLabel", aria-hidden="true")
+		.modal-dialog
+			.modal-content
+				.modal-header
+					button(type="button", class="close", data-dismiss="modal")
+						span(aria-hidden="true")&times;
+						span.sr-only Close
+					h4.modal-title(data-bind="text: titre")
+				.modal-body
+					div(data-bind="foreach: attr")
+						.input-group
+							span.input-group-addon(data-bind="text: name")
+							input.form-control(type="text", data-bind="value: val")
+							span.input-group-addon.glyphicon.glyphicon-remove(data-bind="click: $root.modRm")
+					.input-group
+						span.input-group-addon new attribute
+						input.form-control(type="text", data-bind="value: newAttr")
+				.modal-footer
+					button(type="button", class="btn btn-default", data-dismiss="modal") Close
+					button#modOk(type="button", class="btn btn-primary", data-bind="click: modOk") Save changes

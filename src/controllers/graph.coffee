@@ -12,6 +12,11 @@ graphSchema = new mongoose.Schema
 		text: String
 		x: Number
 		y: Number
+		fixed: Boolean
+		attr: [
+			name: String
+			val: String
+		]
 	]
 
 	links: [
@@ -23,6 +28,10 @@ graphSchema = new mongoose.Schema
 
 
 G = mongoose.model 'Graph', graphSchema
+
+a = 
+	b: () ->
+		
  
 class Graph
 	constructor: ->
@@ -73,8 +82,16 @@ class Graph
 				while i < len && graph.nodes[i]._id.toString() != req.id
 					i++
 				if i < len
-					graph.nodes[i].text = req.text
-					graph.nodes[i].reflexive = req.reflexive
+					console.log req
+					n = graph.nodes[i]
+					n.text = req.text
+					n.reflexive = req.reflexive
+					n.x = req.x
+					n.y = req.y
+					n.fixed = req.fixed || req.fixed == 1
+					n.attr = req.attr
+
+
 					graph.save (err, res) ->
 						fn err, res
 				else

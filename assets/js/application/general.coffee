@@ -1,5 +1,5 @@
 width = window.innerWidth
-height = window.innerHeight
+height = window.innerHeight - 4
 #colors = d3.scale.category10()
 
 # forceInit = ->
@@ -98,33 +98,139 @@ sio = io.connect()
 sio.socket.on 'error', (reason) ->
   console.error 'Unable to connect Socket.IO', reason
 
+#knockout for #viewer
+class Node
+	constructor: (@app) ->
+		@titre = ko.observable ''
+		@attr = ko.observableArray []
+		@newAttr = ko.observable ''
+
+	Attr: (name, val, del = false) =>
+		if typeof(name) == "string"
+			if val?
+				@attr.push
+					name: name
+					val: ko.observable(val)
+			else
+				at = ko.toJS @attr
+				console.log at
+				for i in [0...at.length]
+					x = at[i]
+					if x.name == name
+						if del
+							@attr.splice i, 1
+							return true
+						return x.val()
+				return false
+		else
+			for x in name
+				exist = false
+				for y in @attr()
+					if y.name == x.name
+						exist = true
+						y.val x.val || ''
+
+				if ! exist
+					@attr.push
+						name: x.name
+						val: ko.observable(x.val || '')	
+
+
+	modOk: =>
+			return if !@app.selected_node
+			@app.selected_node.text = @attr()[0].val()
+			console.log ko.toJS(@attr()[1..])
+			@app.restart()
+			#@Attr @attr()[1..]
+			if @newAttr() != ''
+				@Attr @newAttr(), ''
+				@newAttr ''
+			@app.selected_node.attr = ko.toJS(@attr()[1..])
+			sio.emit 'editNode', @app.selected_node
+
+	modRm: (th) =>
+		console.log th
+		@Attr th.name, undefined, true
+		@app.selected_node.attr = ko.toJS(@attr()[1..])
 
 
 
+
+ 
 
 colors = d3.scale.category10()
+
 class App
-	constructor: ->
+	svgDblclick: =>
+		# because :active only works in WebKit?
+		@svg.classed('active', true)
 
-		@lastKeyDown = -1
+		return if d3.event.ctrlKey || @mousedown_node || @mousedown_link
+
+		# insert new node at point
+		node = {reflexive: false}
+		node.x = d3.event.offsetX
+		node.y = d3.event.offsetY
+		sio.emit 'addNode', node, (res) =>
+			return if !res?
+			node.id = res
+			@nodes.push node
+			@selected_link = undefined
+			@selected_node = node
+			$('#texter').focus()
+			@restart()
+
+	svgMouseMove: =>
+		console.log "MM"
+		if @mousedown_node
+			# update drag line
+			@drag_line.attr('d', 'M' + @mousedown_node.dx + ',' + @mousedown_node.dy + 'L' + d3.event.offsetX + ',' + d3.event.offsetY)
+			@restart()
+		else if @mousedown_svg.x?
+			@delta.x += d3.event.offsetX - @mousedown_svg.x
+			@delta.y += d3.event.offsetY - @mousedown_svg.y
+			console.log "toto"
+			@mousedown_svg.x = d3.event.offsetX
+			@mousedown_svg.y = d3.event.offsetY
+			@restart()
 
 
+	svgMouseDown: =>
+		@mousedown_svg =
+			x: d3.event.offsetX
+			y: d3.event.offsetY
+
+		
+	svgMouseUp: =>
+		if @mousedown_node
+			# hide drag line
+			@drag_line
+				.classed('hidden', true)
+				.style('marker-end', '')
+
+		# because :active only works in WebKit?
+		@svg.classed('active', false)
+
+		# clear mouse event vars
+		@mousedown_svg = {}
+		@resetMouseVars()
+
+	svgMouseWheel: =>
+		if d3.event.wheelDelta > 0
+			@scale += 0.025
+		else if d3.event.wheelDelta < 0
+			@scale -= 0.025
+		#d3.select('svg').selectAll('g').attr('transform', => "scale(#{@scale})").selectAll('g').attr('transform', => "scale(#{@scale})")
+		@restart()
+		console.log  d3.event
+
+	initSvg: =>
 		@svg = d3.select('body')
 			.append('svg')
-			.attr('width', width)
-			.attr('height', height)
-
-		@nodes = []
-		@links = []
-
-		@force = d3.layout.force()
-			.nodes(@nodes)
-			.links(@links)
-			.size([width, height])
-			.linkDistance(50)
-			.charge(-200)
-			.on('tick', @tick)
-
+				.attr('width', width)
+				.attr('height', height)
+				#.call(d3.behavior.zoom())
+		
 		# define arrow markers for graph links
 		@svg.append('svg:defs').append('svg:marker')
 				.attr('id', 'end-arrow')
@@ -157,59 +263,58 @@ class App
 		@path = @svg.append('svg:g').selectAll('path')
 		@circle = @svg.append('svg:g').selectAll('g')
 
+		@svg.on('dblclick'	, @svgDblclick)
+			.on('mousemove'	, @svgMouseMove)
+			.on('mouseup'	, @svgMouseUp)
+			.on('mousedown'	, @svgMouseDown)
+			.on('wheel.zoom', @svgMouseWheel)
+
+
+
+	
+
+	constructor: ->
 		# mouse event vars
 		@selected_node = null
 		@selected_link = null
 		@mousedown_link = null
 		@mousedown_node = null
 		@mouseup_node = null
+		@mousedown_svg = {}
+		@delta =
+			x: 0
+			y: 0
 
-		th = @
+		@scale = 1
+		@lastKeyDown = -1
+
+		@nodes = []
+		@links = []
+
+		@initSvg()
+		
+		@force = d3.layout.force()
+			.nodes(@nodes)
+			.links(@links)
+			.size([width, height])
+			.linkDistance(150)
+			.charge(-500)
+			.on('tick', @tick)
+		
 		d3.select(window)
 			.on('keydown', @keydown)
 			.on('keyup', @keyup)
 
-		@svg.on('dblclick', ->
-			# because :active only works in WebKit?
-			th.svg.classed('active', true)
 
-			return if d3.event.ctrlKey || th.mousedown_node || th.mousedown_link
+		# modal validation
 
-			# insert new node at point
-			point = d3.mouse(this)
-			node = {reflexive: false}
-			node.x = point[0]
-			node.y = point[1]
-			sio.emit 'addNode', node, (res) ->
-				return if !res?
-				node.id = res
-				th.nodes.push node
-				th.selected_link = undefined
-				th.selected_node = node
-				$('#texter').focus()
-				th.restart()
-			)
-			.on('mousemove', ->
-				return if !th.mousedown_node
 
-				# update drag line
-				th.drag_line.attr('d', 'M' + th.mousedown_node.x + ',' + th.mousedown_node.y + 'L' + d3.mouse(this)[0] + ',' + d3.mouse(this)[1]);
 
-				th.restart()
-			)
-			.on('mouseup', =>
-				if @mousedown_node
-					# hide drag line
-					@drag_line
-						.classed('hidden', true)
-						.style('marker-end', '')
 
-				# because :active only works in WebKit?
-				@svg.classed('active', false)
 
-				# clear mouse event vars
-				@resetMouseVars()
-		)
+
+
+
 
 	resetMouseVars: =>
 		@mousedown_node = null
@@ -219,22 +324,34 @@ class App
 # update force layout (called automatically each iteration)
 	tick: =>
 		# draw directed edges with proper padding from node centers
-		@path.attr 'd', (d) -> 
-			deltaX = d.target.x - d.source.x
-			deltaY = d.target.y - d.source.y
+
+		for node in @nodes
+
+			node.dx = node.x * @scale
+			node.dx = node.dx + @delta.x
+			node.dy = node.y * @scale
+			node.dy = node.dy + @delta.y
+
+		@path.attr 'd', (d) => 
+			deltaX = (d.target.dx - d.source.dx)
+			deltaY = (d.target.dy - d.source.dy)
 			dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
 			normX = deltaX / dist
 			normY = deltaY / dist
 			sourcePadding = if d.left  then 17 else 12
 			targetPadding = if d.right then 17 else 12
-			sourceX = d.source.x + (sourcePadding * normX)
-			sourceY = d.source.y + (sourcePadding * normY)
-			targetX = d.target.x - (targetPadding * normX)
-			targetY = d.target.y - (targetPadding * normY)
+			sourceX = (d.source.dx + (sourcePadding * normX))
+			sourceY = (d.source.dy + (sourcePadding * normY))
+			targetX = (d.target.dx - (targetPadding * normX))
+			targetY = (d.target.dy - (targetPadding * normY))
 			return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY
 
-		@circle.attr 'transform', (d) ->
-			return 'translate(' + d.x + ',' + d.y + ')';
+
+		@circle.attr 'transform', (d) =>
+			dx = (d.dx - d.width / 2) 
+			dy = (d.dy - d.height / 2)
+
+			return "translate(#{dx}, #{dy})"
 
 
 # update graph (called when needed)
@@ -277,47 +394,46 @@ class App
 		@circle = @circle.data(@nodes, (d) -> return d.id)
 
 		# update existing nodes (reflexive & selected visual states)
-		@circle.selectAll('circle')
+		@circle.selectAll('rect')
 			.style('fill', (d) -> return if d == th.selected_node then d3.rgb(colors(d.id)).brighter().toString() else colors(d.id))
-			.classed('reflexive', (d) -> return d.reflexive)
-		@circle.selectAll('text').text((d) -> return d.text)
+			.classed('reflexive', (d) ->  d.fixed)
+
+		@circle.selectAll('text')
+			.text((d) -> return d.text)
 
 
 		# add new nodes
 		g = @circle.enter().append('svg:g')
 
-		g.append('svg:circle')
+		g.append('svg:rect')
 			.attr('class', 'node')
-			.attr('r', 12)
 			.style('fill', (d) -> return if d == th.selected_node then d3.rgb(colors(d.id)).brighter().toString() else colors(d.id))
 			.style('stroke', (d) -> return d3.rgb(colors(d.id)).darker().toString())
-			.classed('reflexive', (d) -> return d.reflexive)
+			.classed('reflexive', (d) -> return d.reflexive?)
 			.on('mouseover', (d) ->
-				return if(!th.mousedown_node || d == th.mousedown_node)
+				#return if(!th.mousedown_node || d == th.mousedown_node)
+				console.log "TOTOTOT"
 				# enlarge target node
-				d3.select(this).attr('transform', 'scale(1.1)')
+				d3.select(this).attr('transform', 'scale(1.5)')
 			)
 			.on('mouseout', (d) ->
-				return if(!th.mousedown_node || d == th.mousedown_node)
+				#alsaasddreturn if(!th.mousedown_node || d == th.mousedown_node)
 				# unenlarge target node
 				d3.select(this).attr('transform', '')
 			)
 			.on('mousedown', (d) ->
-				return if(d3.event.ctrlKey)
 
 				# select node
 				th.mousedown_node = d
-				if th.mousedown_node == th.selected_node
-					th.selected_node = null
-				else
-					th.selected_node = th.mousedown_node
+				th.selected_node = th.mousedown_node
 				th.selected_link = null
 
+				return if(d3.event.ctrlKey)
 				# reposition drag line
 				th.drag_line
 					.style('marker-end', 'url(#end-arrow)')
 					.classed('hidden', false)
-					.attr('d', 'M' + th.mousedown_node.x + ',' + th.mousedown_node.y + 'L' + th.mousedown_node.x + ',' + th.mousedown_node.y)
+					.attr('d', 'M' + th.mousedown_node.dx + ',' + th.mousedown_node.dy + 'L' + th.mousedown_node.dx + ',' + th.mousedown_node.dy)
 
 				th.restart()
 			)
@@ -381,11 +497,24 @@ class App
 			.attr('class', 'id')
 			.text((d) -> return d.text)
 
+		@circle.selectAll('rect')
+			.attr('width', (d) -> d.width = $(@).next().innerWidth() + 8)
+			.attr('height', (d) -> d.height = $(@).next().innerHeight() + 8)
+			.attr('rx', 4)
+			.attr('ry', 4)
+
+		@circle.selectAll('text')
+			.attr('x', (d) -> $(@).innerWidth() / 2 + 4)
+			.attr('y', (d) -> $(@).innerHeight() + 2)
+
 		# remove old nodes
 		@circle.exit().remove()
 
-		# set the graph in motion
-		@force.start()
+		# set the graph in motion if not drag
+		if !@svg.classed 'ctrl'
+			@force.start()
+		else
+			@tick()
 
 	spliceLinksForNode: (node) =>
 		toSplice = @links.filter((l) ->
@@ -411,7 +540,25 @@ class App
 
 			# ctrl
 			if d3.event.keyCode == 17
-				@circle.call(@force.drag)
+				@circle.call(d3.behavior.drag()
+					.on("dragstart", =>
+						#@mousedown_node.x = 0
+						@force.stop()
+						#d3.event.x *= @scale
+						#d3.event.y *= @scale
+					)
+					.on("drag", =>
+						console.log "d", d3.event
+						@mousedown_node.px += d3.event.dx / @scale
+						@mousedown_node.py += d3.event.dy / @scale
+						@mousedown_node.x += d3.event.dx / @scale
+						@mousedown_node.y += d3.event.dy / @scale
+						@tick()
+					)
+					.on("dragend", =>
+						@force.resume()
+					)
+				)
 				@svg.classed('ctrl', true)
 			console.log d3.event.keyCode
 			return if !@selected_node && !@selected_link
@@ -453,8 +600,21 @@ class App
 						@selected_link.right = true
 						sio.emit 'editLink', @selected_link
 					@restart()
+				when 83 # S
+					@selected_node.fixed = !@selected_node.fixed
+					sio.emit 'editNode', @selected_node
 				when 13
-					$('#texter').focus()
+					if $('#myModal').attr("aria-hidden") == "true"
+						$('#myModal').modal 'toggle'
+						n.titre @selected_node.text
+						n.attr []
+						n.Attr "titre", n.titre()
+						n.Attr @selected_node.attr if @selected_node.attr?
+						console.log @selected_node
+					else
+						$('input').blur()
+						$('#modOk').click()
+
 
 
 	keyup: =>
@@ -470,12 +630,19 @@ class App
 	changeText: (text = '')=>
 		return if !@selected_node
 		@selected_node.text = text
+		console.log @selected_node
 		@restart()
 		sio.emit 'editNode', @selected_node
 
 
+
+
+
 # app starts here
 window.app = app = new App()
+#ko controller
+window.n = n = new Node(app)
+ko.applyBindings n
 
 connected = false
 
@@ -485,6 +652,7 @@ sio.on 'connect', ->
 	sio.emit 'graphInit', href.slice href.lastIndexOf('/') + 1 if !connected
 
 sio.on 'graphInit', (graph) ->
+	console.log graph
 	connected = true
 
 	for node in graph.nodes
