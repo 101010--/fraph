@@ -24,6 +24,11 @@ graphSchema = new mongoose.Schema
 		right: Boolean
 		source: String
 		target: String
+		text: String
+		attr: [
+			name: String
+			val: String
+		]
 	]
 
 
@@ -146,6 +151,8 @@ class Graph
 				if i < len
 					graph.links[i].left = req.left
 					graph.links[i].right = req.right
+					graph.links[i].text = req.text
+					graph.links[i].attr = req.attr
 					graph.save fn
 				else
 					fn 'oops'

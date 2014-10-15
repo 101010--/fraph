@@ -120,7 +120,7 @@ class Node
 						if del
 							@attr.splice i, 1
 							return true
-						return x.val()
+						return x.val
 				return false
 		else
 			for x in name
@@ -137,19 +137,22 @@ class Node
 
 
 	modOk: =>
-			return if !@app.selected_node
-			@app.selected_node.text = @attr()[0].val()
-			console.log ko.toJS(@attr()[1..])
-			@app.restart()
-			#@Attr @attr()[1..]
+			sel = @app.selected_node || @app.selected_link
+			return if !sel
+			@titre sel.text = @Attr 'titre'
 			if @newAttr() != ''
 				@Attr @newAttr(), ''
 				@newAttr ''
-			@app.selected_node.attr = ko.toJS(@attr()[1..])
-			sio.emit 'editNode', @app.selected_node
+			sel.attr = ko.toJS(@attr())
+			@app.restart()
+			if @app.selected_node?
+				sio.emit 'editNode', sel
+			if @app.selected_link?
+				sio.emit 'editLink', sel
 
 	modRm: (th) =>
 		console.log th
+		# BADBADBAD
 		@Attr th.name, undefined, true
 		@app.selected_node.attr = ko.toJS(@attr()[1..])
 
@@ -235,7 +238,7 @@ class App
 		@svg.append('svg:defs').append('svg:marker')
 				.attr('id', 'end-arrow')
 				.attr('viewBox', '0 -5 10 10')
-				.attr('refX', 6)
+				.attr('refX', 15)
 				.attr('markerWidth', 3)
 				.attr('markerHeight', 3)
 				.attr('orient', 'auto')
@@ -246,7 +249,7 @@ class App
 		@svg.append('svg:defs').append('svg:marker')
 				.attr('id', 'start-arrow')
 				.attr('viewBox', '0 -5 10 10')
-				.attr('refX', 4)
+				.attr('refX', -20)
 				.attr('markerWidth', 3)
 				.attr('markerHeight', 3)
 				.attr('orient', 'auto')
@@ -259,9 +262,13 @@ class App
 			.attr('class', 'link dragline hidden')
 			.attr('d', 'M0,0L0,0')
 
+
 		# handles to link and node element groups
 		@path = @svg.append('svg:g').selectAll('path')
+		@label = @svg.append('svg:g').selectAll('textpath')
 		@circle = @svg.append('svg:g').selectAll('g')
+
+		console.log @path, @circle
 
 		@svg.on('dblclick'	, @svgDblclick)
 			.on('mousemove'	, @svgMouseMove)
@@ -332,7 +339,7 @@ class App
 			node.dy = node.y * @scale
 			node.dy = node.dy + @delta.y
 
-		@path.attr 'd', (d) => 
+		@path.selectAll('path.link').attr 'd', (d) => 
 			deltaX = (d.target.dx - d.source.dx)
 			deltaY = (d.target.dy - d.source.dy)
 			dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
@@ -347,6 +354,24 @@ class App
 			return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY
 
 
+		@path.selectAll('path.forText').attr 'd', (d) => 
+			deltaX = (d.target.dx - d.source.dx)
+			deltaY = (d.target.dy - d.source.dy)
+			dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+			normX = deltaX / dist
+			normY = deltaY / dist
+			sourcePadding = if d.left  then 17 else 12
+			targetPadding = if d.right then 17 else 12
+			sourceX = (d.source.dx + (sourcePadding * normX))
+			sourceY = (d.source.dy + (sourcePadding * normY))
+			targetX = (d.target.dx - (targetPadding * normX))
+			targetY = (d.target.dy - (targetPadding * normY))
+			if targetX < sourceX
+				return 'M' + targetX + ',' + targetY + 'L' + sourceX + ',' + sourceY
+			else
+				return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY
+
+
 		@circle.attr 'transform', (d) =>
 			dx = (d.dx - d.width / 2) 
 			dy = (d.dy - d.height / 2)
@@ -358,16 +383,23 @@ class App
 	restart: =>
 		th = @
 		# path (link) group
-		@path = @path.data(@links)
+		@path = @path.data(@links, (d) -> d._id)
 
 		# update existing links
-		@path.classed('selected', (d) -> return d == th.selected_link)
+		@path.selectAll('path.link')
+			.classed('selected', (d) -> return d == th.selected_link)
 			.style('marker-start', (d) -> return if d.left then 'url(#start-arrow)' else '')
 			.style('marker-end', (d) -> return if d.right then 'url(#end-arrow)' else '')
 
+		@path.selectAll('text').each (d) ->
+			$(@).children().text(d.text)
+
 
 		# add new links
-		@path.enter().append('svg:path')
+		p = @path.enter().append('svg:g')
+
+		p.append('svg:path')
+			.attr('id', (d) -> d._id)
 			.attr('class', 'link')
 			.classed('selected', (d) -> return d == th.selected_link)
 			.style('marker-start', (d) -> return if d.left then 'url(#start-arrow)' else '')
@@ -385,8 +417,22 @@ class App
 				th.restart()
 			)
 
+		p.append('svg:path')
+			.attr('class', 'forText')
+			.attr('id', (d) -> "text_" + d._id)
+
+		p.append("svg:text")
+			.attr('dy', -5)
+		.append("svg:textPath")
+			.attr('startOffset', "50%")
+			.attr("stroke","black")
+			.attr("xlink:href", (d) -> '#text_' + d._id)
+			.text((d) -> d.text)
+
+
 		# remove old links
 		@path.exit().remove()
+
 
 
 		# circle (node) group
@@ -412,9 +458,9 @@ class App
 			.classed('reflexive', (d) -> return d.reflexive?)
 			.on('mouseover', (d) ->
 				#return if(!th.mousedown_node || d == th.mousedown_node)
-				console.log "TOTOTOT"
 				# enlarge target node
 				d3.select(this).attr('transform', 'scale(1.5)')
+				console.log d3.select(this)
 			)
 			.on('mouseout', (d) ->
 				#alsaasddreturn if(!th.mousedown_node || d == th.mousedown_node)
@@ -490,6 +536,8 @@ class App
 				th.restart()
 			)
 
+		# show link label
+
 		# show node IDs
 		g.append('svg:text')
 			.attr('x', 0)
@@ -555,7 +603,9 @@ class App
 						@mousedown_node.y += d3.event.dy / @scale
 						@tick()
 					)
-					.on("dragend", =>
+					.on("dragend", (d, i) =>
+						console.log "dragend", d, i
+						sio.emit 'editNode', d
 						@force.resume()
 					)
 				)
@@ -564,6 +614,7 @@ class App
 			return if !@selected_node && !@selected_link
 			switch d3.event.keyCode
 				when 8, 46  # backspace, delete
+					return if $('#myModal').attr("aria-hidden") == "false"
 					if @selected_node
 						@nodes.splice(@nodes.indexOf(@selected_node), 1)
 						@spliceLinksForNode(@selected_node)
@@ -601,16 +652,21 @@ class App
 						sio.emit 'editLink', @selected_link
 					@restart()
 				when 83 # S
+					return if !@selected_node? || $('#myModal').attr("aria-hidden") == "false"
 					@selected_node.fixed = !@selected_node.fixed
 					sio.emit 'editNode', @selected_node
 				when 13
 					if $('#myModal').attr("aria-hidden") == "true"
-						$('#myModal').modal 'toggle'
-						n.titre @selected_node.text
-						n.attr []
-						n.Attr "titre", n.titre()
-						n.Attr @selected_node.attr if @selected_node.attr?
-						console.log @selected_node
+						
+						sel = @selected_node || @selected_link
+						if sel?
+							$('#myModal').modal 'toggle'
+							n.titre sel.text || ''
+							n.attr []
+							n.Attr("titre", n.titre() || '')
+							n.Attr sel.attr if sel.attr?
+							console.log sel
+
 					else
 						$('input').blur()
 						$('#modOk').click()
@@ -627,12 +683,6 @@ class App
 				.on('touchstart.drag', null)
 			@svg.classed('ctrl', false)
 
-	changeText: (text = '')=>
-		return if !@selected_node
-		@selected_node.text = text
-		console.log @selected_node
-		@restart()
-		sio.emit 'editNode', @selected_node
 
 
 

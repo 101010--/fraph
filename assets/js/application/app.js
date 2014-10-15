@@ -44,7 +44,7 @@
                 this.attr.splice(i, 1);
                 return true;
               }
-              return x.val();
+              return x.val;
             }
           }
           return false;
@@ -76,18 +76,24 @@
     };
 
     Node.prototype.modOk = function() {
-      if (!this.app.selected_node) {
+      var sel;
+      sel = this.app.selected_node || this.app.selected_link;
+      if (!sel) {
         return;
       }
-      this.app.selected_node.text = this.attr()[0].val();
-      console.log(ko.toJS(this.attr().slice(1)));
-      this.app.restart();
+      this.titre(sel.text = this.Attr('titre'));
       if (this.newAttr() !== '') {
         this.Attr(this.newAttr(), '');
         this.newAttr('');
       }
-      this.app.selected_node.attr = ko.toJS(this.attr().slice(1));
-      return sio.emit('editNode', this.app.selected_node);
+      sel.attr = ko.toJS(this.attr());
+      this.app.restart();
+      if (this.app.selected_node != null) {
+        sio.emit('editNode', sel);
+      }
+      if (this.app.selected_link != null) {
+        return sio.emit('editLink', sel);
+      }
     };
 
     Node.prototype.modRm = function(th) {
@@ -171,16 +177,17 @@
 
     App.prototype.initSvg = function() {
       this.svg = d3.select('body').append('svg').attr('width', width).attr('height', height);
-      this.svg.append('svg:defs').append('svg:marker').attr('id', 'end-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 6).attr('markerWidth', 3).attr('markerHeight', 3).attr('orient', 'auto').append('svg:path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#000');
-      this.svg.append('svg:defs').append('svg:marker').attr('id', 'start-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 4).attr('markerWidth', 3).attr('markerHeight', 3).attr('orient', 'auto').append('svg:path').attr('d', 'M10,-5L0,0L10,5').attr('fill', '#000');
+      this.svg.append('svg:defs').append('svg:marker').attr('id', 'end-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 15).attr('markerWidth', 3).attr('markerHeight', 3).attr('orient', 'auto').append('svg:path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#000');
+      this.svg.append('svg:defs').append('svg:marker').attr('id', 'start-arrow').attr('viewBox', '0 -5 10 10').attr('refX', -20).attr('markerWidth', 3).attr('markerHeight', 3).attr('orient', 'auto').append('svg:path').attr('d', 'M10,-5L0,0L10,5').attr('fill', '#000');
       this.drag_line = this.svg.append('svg:path').attr('class', 'link dragline hidden').attr('d', 'M0,0L0,0');
       this.path = this.svg.append('svg:g').selectAll('path');
+      this.label = this.svg.append('svg:g').selectAll('textpath');
       this.circle = this.svg.append('svg:g').selectAll('g');
+      console.log(this.path, this.circle);
       return this.svg.on('dblclick', this.svgDblclick).on('mousemove', this.svgMouseMove).on('mouseup', this.svgMouseUp).on('mousedown', this.svgMouseDown).on('wheel.zoom', this.svgMouseWheel);
     };
 
     function App() {
-      this.changeText = __bind(this.changeText, this);
       this.keyup = __bind(this.keyup, this);
       this.keydown = __bind(this.keydown, this);
       this.spliceLinksForNode = __bind(this.spliceLinksForNode, this);
@@ -229,7 +236,7 @@
         node.dy = node.y * this.scale;
         node.dy = node.dy + this.delta.y;
       }
-      this.path.attr('d', function(d) {
+      this.path.selectAll('path.link').attr('d', function(d) {
         var deltaX, deltaY, dist, normX, normY, sourcePadding, sourceX, sourceY, targetPadding, targetX, targetY;
         deltaX = d.target.dx - d.source.dx;
         deltaY = d.target.dy - d.source.dy;
@@ -244,6 +251,25 @@
         targetY = d.target.dy - (targetPadding * normY);
         return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY;
       });
+      this.path.selectAll('path.forText').attr('d', function(d) {
+        var deltaX, deltaY, dist, normX, normY, sourcePadding, sourceX, sourceY, targetPadding, targetX, targetY;
+        deltaX = d.target.dx - d.source.dx;
+        deltaY = d.target.dy - d.source.dy;
+        dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        normX = deltaX / dist;
+        normY = deltaY / dist;
+        sourcePadding = d.left ? 17 : 12;
+        targetPadding = d.right ? 17 : 12;
+        sourceX = d.source.dx + (sourcePadding * normX);
+        sourceY = d.source.dy + (sourcePadding * normY);
+        targetX = d.target.dx - (targetPadding * normX);
+        targetY = d.target.dy - (targetPadding * normY);
+        if (targetX < sourceX) {
+          return 'M' + targetX + ',' + targetY + 'L' + sourceX + ',' + sourceY;
+        } else {
+          return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY;
+        }
+      });
       return this.circle.attr('transform', function(d) {
         var dx, dy;
         dx = d.dx - d.width / 2;
@@ -253,10 +279,12 @@
     };
 
     App.prototype.restart = function() {
-      var g, th;
+      var g, p, th;
       th = this;
-      this.path = this.path.data(this.links);
-      this.path.classed('selected', function(d) {
+      this.path = this.path.data(this.links, function(d) {
+        return d._id;
+      });
+      this.path.selectAll('path.link').classed('selected', function(d) {
         return d === th.selected_link;
       }).style('marker-start', function(d) {
         if (d.left) {
@@ -271,7 +299,13 @@
           return '';
         }
       });
-      this.path.enter().append('svg:path').attr('class', 'link').classed('selected', function(d) {
+      this.path.selectAll('text').each(function(d) {
+        return $(this).children().text(d.text);
+      });
+      p = this.path.enter().append('svg:g');
+      p.append('svg:path').attr('id', function(d) {
+        return d._id;
+      }).attr('class', 'link').classed('selected', function(d) {
         return d === th.selected_link;
       }).style('marker-start', function(d) {
         if (d.left) {
@@ -297,6 +331,14 @@
         }
         th.selected_node = null;
         return th.restart();
+      });
+      p.append('svg:path').attr('class', 'forText').attr('id', function(d) {
+        return "text_" + d._id;
+      });
+      p.append("svg:text").attr('dy', -5).append("svg:textPath").attr('startOffset', "50%").attr("stroke", "black").attr("xlink:href", function(d) {
+        return '#text_' + d._id;
+      }).text(function(d) {
+        return d.text;
       });
       this.path.exit().remove();
       this.circle = this.circle.data(this.nodes, function(d) {
@@ -326,8 +368,8 @@
       }).classed('reflexive', function(d) {
         return d.reflexive != null;
       }).on('mouseover', function(d) {
-        console.log("TOTOTOT");
-        return d3.select(this).attr('transform', 'scale(1.5)');
+        d3.select(this).attr('transform', 'scale(1.5)');
+        return console.log(d3.select(this));
       }).on('mouseout', function(d) {
         return d3.select(this).attr('transform', '');
       }).on('mousedown', function(d) {
@@ -422,7 +464,8 @@
     };
 
     App.prototype.keydown = function() {
-      var _this = this;
+      var sel,
+        _this = this;
       if ($('#texter:focus')[0] != null) {
         if (d3.event.keyCode === 13) {
           this.changeText($('#texter:focus').val());
@@ -446,7 +489,9 @@
             _this.mousedown_node.x += d3.event.dx / _this.scale;
             _this.mousedown_node.y += d3.event.dy / _this.scale;
             return _this.tick();
-          }).on("dragend", function() {
+          }).on("dragend", function(d, i) {
+            console.log("dragend", d, i);
+            sio.emit('editNode', d);
             return _this.force.resume();
           }));
           this.svg.classed('ctrl', true);
@@ -458,6 +503,9 @@
         switch (d3.event.keyCode) {
           case 8:
           case 46:
+            if ($('#myModal').attr("aria-hidden") === "false") {
+              return;
+            }
             if (this.selected_node) {
               this.nodes.splice(this.nodes.indexOf(this.selected_node), 1);
               this.spliceLinksForNode(this.selected_node);
@@ -494,18 +542,24 @@
             }
             return this.restart();
           case 83:
+            if ((this.selected_node == null) || $('#myModal').attr("aria-hidden") === "false") {
+              return;
+            }
             this.selected_node.fixed = !this.selected_node.fixed;
             return sio.emit('editNode', this.selected_node);
           case 13:
             if ($('#myModal').attr("aria-hidden") === "true") {
-              $('#myModal').modal('toggle');
-              n.titre(this.selected_node.text);
-              n.attr([]);
-              n.Attr("titre", n.titre());
-              if (this.selected_node.attr != null) {
-                n.Attr(this.selected_node.attr);
+              sel = this.selected_node || this.selected_link;
+              if (sel != null) {
+                $('#myModal').modal('toggle');
+                n.titre(sel.text || '');
+                n.attr([]);
+                n.Attr("titre", n.titre() || '');
+                if (sel.attr != null) {
+                  n.Attr(sel.attr);
+                }
+                return console.log(sel);
               }
-              return console.log(this.selected_node);
             } else {
               $('input').blur();
               return $('#modOk').click();
@@ -520,19 +574,6 @@
         this.circle.on('mousedown.drag', null).on('touchstart.drag', null);
         return this.svg.classed('ctrl', false);
       }
-    };
-
-    App.prototype.changeText = function(text) {
-      if (text == null) {
-        text = '';
-      }
-      if (!this.selected_node) {
-        return;
-      }
-      this.selected_node.text = text;
-      console.log(this.selected_node);
-      this.restart();
-      return sio.emit('editNode', this.selected_node);
     };
 
     return App;
