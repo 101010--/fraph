@@ -17,6 +17,7 @@
       this.app = app;
       this.modRm = __bind(this.modRm, this);
       this.modOk = __bind(this.modOk, this);
+      this.modal = __bind(this.modal, this);
       this.Attr = __bind(this.Attr, this);
       this.titre = ko.observable('');
       this.attr = ko.observableArray([]);
@@ -75,13 +76,33 @@
       }
     };
 
+    Node.prototype.modal = function() {
+      var sel;
+      if ($('#myModal').attr("aria-hidden") === "true") {
+        sel = this.app.selected_node || this.app.selected_link;
+        if (sel != null) {
+          $('#myModal').modal('toggle');
+          this.titre(sel.text || '');
+          this.attr([]);
+          if (sel.attr != null) {
+            this.Attr(sel.attr);
+          }
+          return $('#myModal .form-control').eq(0).focus();
+        }
+      } else {
+        $('input').blur();
+        return this.modOk();
+      }
+    };
+
     Node.prototype.modOk = function() {
       var sel;
       sel = this.app.selected_node || this.app.selected_link;
       if (!sel) {
         return;
       }
-      this.titre(sel.text = this.Attr('titre'));
+      sel.text = this.titre();
+      console.log(sel);
       if (this.newAttr() !== '') {
         this.Attr(this.newAttr(), '');
         this.newAttr('');
@@ -243,8 +264,8 @@
         dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         normX = deltaX / dist;
         normY = deltaY / dist;
-        sourcePadding = d.left ? 17 : 12;
-        targetPadding = d.right ? 17 : 12;
+        sourcePadding = 0;
+        targetPadding = 0;
         sourceX = d.source.dx + (sourcePadding * normX);
         sourceY = d.source.dy + (sourcePadding * normY);
         targetX = d.target.dx - (targetPadding * normX);
@@ -279,7 +300,7 @@
     };
 
     App.prototype.restart = function() {
-      var g, p, th;
+      var g, p, texPa, th;
       th = this;
       this.path = this.path.data(this.links, function(d) {
         return d._id;
@@ -335,7 +356,7 @@
       p.append('svg:path').attr('class', 'forText').attr('id', function(d) {
         return "text_" + d._id;
       });
-      p.append("svg:text").attr('dy', -5).append("svg:textPath").attr('startOffset', "50%").attr("stroke", "black").attr("xlink:href", function(d) {
+      texPa = p.append("svg:text").attr('dy', -5).attr('text-anchor', 'middle').append("svg:textPath").attr('startOffset', "50%").attr("stroke", "black").attr("xlink:href", function(d) {
         return '#text_' + d._id;
       }).text(function(d) {
         return d.text;
@@ -464,8 +485,7 @@
     };
 
     App.prototype.keydown = function() {
-      var sel,
-        _this = this;
+      var _this = this;
       if ($('#texter:focus')[0] != null) {
         if (d3.event.keyCode === 13) {
           this.changeText($('#texter:focus').val());
@@ -548,22 +568,7 @@
             this.selected_node.fixed = !this.selected_node.fixed;
             return sio.emit('editNode', this.selected_node);
           case 13:
-            if ($('#myModal').attr("aria-hidden") === "true") {
-              sel = this.selected_node || this.selected_link;
-              if (sel != null) {
-                $('#myModal').modal('toggle');
-                n.titre(sel.text || '');
-                n.attr([]);
-                n.Attr("titre", n.titre() || '');
-                if (sel.attr != null) {
-                  n.Attr(sel.attr);
-                }
-                return console.log(sel);
-              }
-            } else {
-              $('input').blur();
-              return $('#modOk').click();
-            }
+            return n.modal();
         }
       }
     };
@@ -647,8 +652,12 @@
     while (i < len && app.nodes[i].id !== node._id) {
       i++;
     }
+    console.log(node);
     app.nodes[i].text = node.text;
     app.nodes[i].reflexive = node.reflexive;
+    app.nodes[i].fixed = node.fixed;
+    app.nodes[i].x = node.x;
+    app.nodes[i].y = node.y;
     return app.restart();
   });
 

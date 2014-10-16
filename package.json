@@ -3,6 +3,7 @@
   "version": "0.0.42",
   "private": true,
   "scripts": {
+    "start": "node server.js",
     "test": "mocha --require should --compilers coffee:coffee-script --colors"
   },
   "dependencies": {

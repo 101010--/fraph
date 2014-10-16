@@ -136,10 +136,25 @@ class Node
 						val: ko.observable(x.val || '')	
 
 
+	modal: =>
+		if $('#myModal').attr("aria-hidden") == "true"		
+			sel = @app.selected_node || @app.selected_link
+			if sel?
+				$('#myModal').modal 'toggle'
+				@titre sel.text || ''
+				@attr []
+				@Attr sel.attr if sel.attr?
+				$('#myModal .form-control').eq(0).focus()
+
+		else
+			$('input').blur()
+			@modOk()
+
 	modOk: =>
 			sel = @app.selected_node || @app.selected_link
 			return if !sel
-			@titre sel.text = @Attr 'titre'
+			sel.text = @titre()
+			console.log sel
 			if @newAttr() != ''
 				@Attr @newAttr(), ''
 				@newAttr ''
@@ -345,8 +360,8 @@ class App
 			dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
 			normX = deltaX / dist
 			normY = deltaY / dist
-			sourcePadding = if d.left  then 17 else 12
-			targetPadding = if d.right then 17 else 12
+			sourcePadding = 0#if d.left  then 17 else 12
+			targetPadding = 0#if d.right then 17 else 12
 			sourceX = (d.source.dx + (sourcePadding * normX))
 			sourceY = (d.source.dy + (sourcePadding * normY))
 			targetX = (d.target.dx - (targetPadding * normX))
@@ -421,8 +436,9 @@ class App
 			.attr('class', 'forText')
 			.attr('id', (d) -> "text_" + d._id)
 
-		p.append("svg:text")
+		texPa = p.append("svg:text")
 			.attr('dy', -5)
+			.attr('text-anchor', 'middle')
 		.append("svg:textPath")
 			.attr('startOffset', "50%")
 			.attr("stroke","black")
@@ -656,20 +672,7 @@ class App
 					@selected_node.fixed = !@selected_node.fixed
 					sio.emit 'editNode', @selected_node
 				when 13
-					if $('#myModal').attr("aria-hidden") == "true"
-						
-						sel = @selected_node || @selected_link
-						if sel?
-							$('#myModal').modal 'toggle'
-							n.titre sel.text || ''
-							n.attr []
-							n.Attr("titre", n.titre() || '')
-							n.Attr sel.attr if sel.attr?
-							console.log sel
-
-					else
-						$('input').blur()
-						$('#modOk').click()
+					n.modal()
 
 
 
@@ -738,8 +741,13 @@ sio.on 'editNode', (node) ->
 	i = 0
 	while i < len && app.nodes[i].id != node._id
 		i++
+	console.log node
 	app.nodes[i].text = node.text
 	app.nodes[i].reflexive = node.reflexive
+	app.nodes[i].fixed = node.fixed
+	app.nodes[i].x = node.x
+	app.nodes[i].y = node.y
+
 	app.restart()
 
 sio.on 'rmNode', (id) ->

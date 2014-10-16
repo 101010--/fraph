@@ -105,7 +105,8 @@ module.exports = (grunt) ->
 
 	grunt.registerTask 'default', ['coffee', 'jade', 'less', 'concat', 'express', 'watch']
 	grunt.registerTask 'dev', ['express', 'watch']
-	grunt.registerTask 'cop', ['copy', "compress"]
+	grunt.registerTask 'ccop', ['copy', "compress"]
+	grunt.registerTask 'copy', ['copy']
 	grunt.registerTask 'test', ['watch:coffee_test']
 
 	grunt.loadNpmTasks 'grunt-contrib-coffee'
