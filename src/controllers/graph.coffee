@@ -75,7 +75,7 @@ class Graph
 
 	editNode: (req, cb) ->
 		return cb 'noRoom' if !req.room? || req.room == ''
-		return cb 'noId' if !req.id? || req.id == ''
+		return cb 'noId' if !req._id? || req._id == ''
 		i = 0
 		async.waterfall [
 			(fn) ->
@@ -84,7 +84,7 @@ class Graph
 					fn undefined, res
 			,(graph, fn) ->
 				len = graph.nodes.length
-				while i < len && graph.nodes[i]._id.toString() != req.id
+				while i < len && graph.nodes[i]._id.toString() != req._id
 					i++
 				if i < len
 					console.log req
@@ -112,10 +112,10 @@ class Graph
 
 	rmNode: (req, cb) ->
 		return cb 'noRoom' if !req.room? || req.room == ''
-		return cb 'noId' if !req.id? || req.id == ''
-		G.findOneAndUpdate {room: req.room}, {$pull: {nodes: {_id: req.id}}}, (err, res) ->
+		return cb 'noId' if !req._id? || req._id == ''
+		G.findOneAndUpdate {room: req.room}, {$pull: {nodes: {_id: req._id}}}, (err, res) ->
 			return fn err || 'dafukRoom' if err? || !res?
-			cb undefined, req.id
+			cb undefined, req._id
 
 	addLink: (req, cb) ->
 		return cb 'noRoom' if !req.room? || req.room == ''
@@ -125,7 +125,7 @@ class Graph
 					return fn err || 'dafukRoom' if err? || !res?
 					fn undefined, res
 			,(graph, fn) ->
-				graph.links.push {left: req.left, right: req.right, source: req.source.id, target: req.target.id}
+				graph.links.push {left: req.left, right: req.right, source: req.source._id, target: req.target._id}
 				graph.save fn
 		], (err, res) ->
 			if err?

@@ -85,6 +85,7 @@ io.sockets.on 'connection', (socket) ->
 				socket.broadcast.to(room).emit('addLink', res)
 
 	socket.on 'editNode', (data, cb) ->
+		console.log 'editNode', data
 		data.room = room
 		CoC.graph.editNode data, (err, res) ->
 			console.log err, res
@@ -97,7 +98,7 @@ io.sockets.on 'connection', (socket) ->
 			socket.broadcast.to(room).emit('editLink', res)
 
 	socket.on 'rmNode', (data, cb) ->
-		data = {id: data, room: room}
+		data = {_id: data, room: room}
 		CoC.graph.rmNode data, (err, res) ->
 			console.log 'rmNode', err, res
 			socket.broadcast.to(room).emit('rmNode', res)

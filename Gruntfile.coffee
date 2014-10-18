@@ -70,10 +70,7 @@ module.exports = (grunt) ->
 					{src: 'server.js', dest: '../toDeploy/'}
 					{src: 'package.json', dest: '../toDeploy/'}
 					{src: 'public/**', dest: '../toDeploy/'}
-					{src: 'views/login.jade', dest: '../toDeploy/views/login.jade'}
 					{src: 'views/index.html', dest: '../toDeploy/views/index.html'}
-					{src: 'views/admin.html', dest: '../toDeploy/views/admin.html'}
-					{src: 'views/resetPassword.html', dest: '../toDeploy/views/resetPassword.html'}
 					{src: 'app/*.js', dest: '../toDeploy/'}
 					{src: 'app/controllers/*.js', dest: '../toDeploy/'}
 				]

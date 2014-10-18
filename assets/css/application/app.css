@@ -52,3 +52,7 @@ text.id {
 body {
   margin: 0;
 }
+.viewer {
+  position: absolute;
+  width: 17%;
+}

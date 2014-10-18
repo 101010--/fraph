@@ -1,109 +1,33 @@
-width = window.innerWidth
-height = window.innerHeight - 4
-#colors = d3.scale.category10()
-
-# forceInit = ->
-# 	d3.layout.force()
-# 		.nodes([{x: 42, y: 42}])
-# 		.links([])
-# 		.size([width, height])
-
-# dragstart = (d) ->
-# 	d3.select(@).classed "fixed", d.fixed = true
-
-# class App
-# 	constructor: ->
-# 		@force = forceInit()
-
-# 		@nodes = @force.nodes()
-# 		@links = @force.links()
-
-# 		@svg = d3.select("body").append("svg")
-# 			.attr("width", width)
-# 			.attr("height", height)
-# 			.on("dblclick", @addNode)
-
-# 		@vlink = @svg.selectAll("line")
-# 		@vnode = @svg.selectAll("circle")
-
-# 		@selectedNode = {}
+width = $(window).width()
+height = $(window).height()
 
 
-# 		@force.on "tick", =>
-# 			@vlink.attr("x1", (d) -> d.source.x)
-# 				.attr("y1", (d) -> d.source.y)
-# 				.attr("x2", (d) -> d.target.x)
-# 				.attr("y2", (d) -> d.target.y)
-
-# 			@vnode.attr "transform", (d) -> "translate(#{d.x}, #{d.y})"
-# 			@svg.selectAll("circle").attr "transform", (d) -> "translate(#{d.x}, #{d.y})"
-# 			# @vnode.attr("cx", (d) -> d.x)
-# 			# 	.attr("cy", (d) -> d.y)
-
-# 		@restart()
-
-
-# 	drag: =>
-# 		@force.drag().on "dragstart", @dragstart
-
-# 	selectNode: (d) =>
-# 		console.log d
-# 		d3.event.cancelBubble = true
-# 		if d == @selectedNode
-# 			@selectedNode = undefined
-# 		else
-# 			@selectedNode = d
-# 		@restart()
-
-
-# 	restart: =>
-# 		@vlink = @vlink.data(@links)
-# 		@vlink.enter().append("line")
-
-# 		@vnode = @vnode.data(@nodes)
-
-# 		@vnode.enter().append("circle")
-# 		    .attr("r", 5)
-# 			.style('fill', (d) => 
-# 				console.log "toto : ", d, @selectedNode
-# 				if d == @selectedNode then d3.rgb(colors(2)).brighter().toString() else colors(2))
-# 			.style('stroke', (d) -> d3.rgb(colors(d.index)).darker().toString())
-# 			.on "mousedown", @selectNode
-# 		    #.call @drag
-				
-# 		@vnode.enter().append("text")
-# 			#.attr("x", 12)
-# 			.attr("y", -15)
-# 			.attr("dy", ".35em")
-# 			.text("toto")
-		
-
-# 		@force.start()
-
-# 	addNode: () ->
-# 		point = d3.mouse(@)
-# 		n =
-# 			x: point[0]
-# 			y: point[1]
-# 		window.app.nodes.push n
-
-# 		window.app.restart()
-
-# window.app = new App()
-
-
+getClass = (obj) ->
+  if (typeof obj == "undefined")
+    return "undefined"
+  if (obj == null)
+    return "null"
+  return Object.prototype.toString.call(obj)
+    .match(/^\[object\s(.*)\]$/)[1]
 
 sio = io.connect()
 
 sio.socket.on 'error', (reason) ->
   console.error 'Unable to connect Socket.IO', reason
 
-#knockout for #viewer
-class Node
+
+
+# knockout for #viewer
+class Viewer
 	constructor: (@app) ->
+		@isVis = ko.observable true
 		@titre = ko.observable ''
 		@attr = ko.observableArray []
 		@newAttr = ko.observable ''
+
+	keyDown: (x, y) =>
+		@modOk() if y.which == 13
+		return true
 
 	Attr: (name, val, del = false) =>
 		if typeof(name) == "string"
@@ -111,9 +35,10 @@ class Node
 				@attr.push
 					name: name
 					val: ko.observable(val)
+				if name[0] == "/"
+					@[name.slice(1)] = val
 			else
 				at = ko.toJS @attr
-				console.log at
 				for i in [0...at.length]
 					x = at[i]
 					if x.name == name
@@ -130,53 +55,133 @@ class Node
 						exist = true
 						y.val x.val || ''
 
-				if ! exist
+				if !exist
 					@attr.push
 						name: x.name
 						val: ko.observable(x.val || '')	
+					if name[0] == "/"
+						@[name.slice(1)] = val
 
+
+	load: =>
+		sel = @app.selected_node || @app.selected_link
+		if sel?
+			@titre sel.text || ''
+			@attr []
+			@Attr sel.attr if sel.attr?
+			$('.viewer .form-control').eq(0).focus()
 
 	modal: =>
-		if $('#myModal').attr("aria-hidden") == "true"		
-			sel = @app.selected_node || @app.selected_link
-			if sel?
-				$('#myModal').modal 'toggle'
-				@titre sel.text || ''
-				@attr []
-				@Attr sel.attr if sel.attr?
-				$('#myModal .form-control').eq(0).focus()
+		return @isVis !@isVis()
+		# if !@isVis()
 
-		else
-			$('input').blur()
-			@modOk()
+		# else
+		# 	$('input').blur()
+		# 	@modOk()
 
 	modOk: =>
 			sel = @app.selected_node || @app.selected_link
 			return if !sel
 			sel.text = @titre()
-			console.log sel
 			if @newAttr() != ''
 				@Attr @newAttr(), ''
 				@newAttr ''
 			sel.attr = ko.toJS(@attr())
-			@app.restart()
 			if @app.selected_node?
 				sio.emit 'editNode', sel
+				sel.refreshAttr()
 			if @app.selected_link?
 				sio.emit 'editLink', sel
+			@app.restart()
 
 	modRm: (th) =>
-		console.log th
 		# BADBADBAD
 		@Attr th.name, undefined, true
 		@app.selected_node.attr = ko.toJS(@attr()[1..])
 
 
-
-
- 
-
 colors = d3.scale.category10()
+
+class Node
+	constructor: (n) ->
+		@_id = n._id
+		@x = n.x || 0
+		@y = n.y || 0
+		@reflexive = false
+		@attr = []
+		@fixed = n.fixed
+		if n.attr?
+			for x in n.attr
+				@attr.push
+					name: x.name
+					val: x.val
+				if x.name[0] == "/"
+					@[x.name.slice(1)] = x.val
+		@text = n.text
+
+	refreshAttr: =>
+		for x in @attr
+			if x.name[0] == "/"
+				@[x.name.slice(1)] = x.val
+
+
+
+class Graph
+	constructor: (@visu) ->
+		@nodes = []
+		@links = []
+
+	addNode: (n = {x: 10, y: 10}) =>
+		n = {x: 10, y: 10} if getClass(n) == "KeyboardEvent"
+		x = {}
+		sio.emit 'addNode', n, (res) =>
+			
+			return if !res?
+			n._id = res
+			n = new Node n
+			@nodes.push n
+			@visu.selected_link = undefined
+			@visu.selected_node = n
+			@visu.viewer.load()
+			@visu.restart()
+
+	delNode: (n) =>
+		@nodes.splice(@nodes.indexOf(n), 1)
+		@spliceLinksForNode(n)
+		sio.emit 'rmNode', n._id
+
+	addLink: (source, target, direction) =>
+		link = @links.filter((l) ->
+			l.source == source && l.target == target
+		)[0]
+
+		if link
+			link[direction] = true
+			sio.emit 'editLink', link
+		else
+			link = {source: source, target: target, left: false, right: false, attr: []}
+			link[direction] = true
+			sio.emit 'addLink', link, (res) =>
+				link._id = res
+				@links.push link
+				@visu.selected_link = link
+				@visu.selected_node = null
+				@visu.viewer.load()
+				@visu.restart()
+
+	delLink: (l) =>
+		@links.splice(@links.indexOf(l), 1)
+		sio.emit 'rmLink', n._id
+
+	spliceLinksForNode: (node) =>
+		toSplice = @links.filter((l) ->
+			return (l.source == node || l.target == node);
+		)
+		toSplice.map((l) => 
+			sio.emit 'rmLink', l._id
+			@links.splice(@links.indexOf(l), 1)
+		)
+
 
 class App
 	svgDblclick: =>
@@ -185,21 +190,13 @@ class App
 
 		return if d3.event.ctrlKey || @mousedown_node || @mousedown_link
 
-		# insert new node at point
-		node = {reflexive: false}
-		node.x = d3.event.offsetX
-		node.y = d3.event.offsetY
-		sio.emit 'addNode', node, (res) =>
-			return if !res?
-			node.id = res
-			@nodes.push node
-			@selected_link = undefined
-			@selected_node = node
-			$('#texter').focus()
-			@restart()
+		@graph.addNode 
+			x: d3.event.offsetX
+			y: d3.event.offsetY
+
+		@restart()
 
 	svgMouseMove: =>
-		console.log "MM"
 		if @mousedown_node
 			# update drag line
 			@drag_line.attr('d', 'M' + @mousedown_node.dx + ',' + @mousedown_node.dy + 'L' + d3.event.offsetX + ',' + d3.event.offsetY)
@@ -207,7 +204,6 @@ class App
 		else if @mousedown_svg.x?
 			@delta.x += d3.event.offsetX - @mousedown_svg.x
 			@delta.y += d3.event.offsetY - @mousedown_svg.y
-			console.log "toto"
 			@mousedown_svg.x = d3.event.offsetX
 			@mousedown_svg.y = d3.event.offsetY
 			@restart()
@@ -234,26 +230,34 @@ class App
 		@resetMouseVars()
 
 	svgMouseWheel: =>
+
+		scaleVal = 0.04
+
+		widthMid = window.innerWidth * scaleVal / 2
+		heightMid = window.innerHeight * scaleVal / 2
+
 		if d3.event.wheelDelta > 0
-			@scale += 0.025
+			@scale += scaleVal
+			@delta.x -= widthMid
+			@delta.y -= heightMid
+
 		else if d3.event.wheelDelta < 0
-			@scale -= 0.025
+			@scale -= scaleVal
+			@delta.x += widthMid
+			@delta.y += heightMid
 		#d3.select('svg').selectAll('g').attr('transform', => "scale(#{@scale})").selectAll('g').attr('transform', => "scale(#{@scale})")
 		@restart()
-		console.log  d3.event
 
 	initSvg: =>
 		@svg = d3.select('body')
 			.append('svg')
-				.attr('width', width)
-				.attr('height', height)
 				#.call(d3.behavior.zoom())
 		
 		# define arrow markers for graph links
 		@svg.append('svg:defs').append('svg:marker')
 				.attr('id', 'end-arrow')
 				.attr('viewBox', '0 -5 10 10')
-				.attr('refX', 15)
+				.attr('refX', 30)
 				.attr('markerWidth', 3)
 				.attr('markerHeight', 3)
 				.attr('orient', 'auto')
@@ -283,17 +287,12 @@ class App
 		@label = @svg.append('svg:g').selectAll('textpath')
 		@circle = @svg.append('svg:g').selectAll('g')
 
-		console.log @path, @circle
 
 		@svg.on('dblclick'	, @svgDblclick)
 			.on('mousemove'	, @svgMouseMove)
 			.on('mouseup'	, @svgMouseUp)
 			.on('mousedown'	, @svgMouseDown)
 			.on('wheel.zoom', @svgMouseWheel)
-
-
-
-	
 
 	constructor: ->
 		# mouse event vars
@@ -310,32 +309,32 @@ class App
 		@scale = 1
 		@lastKeyDown = -1
 
-		@nodes = []
-		@links = []
+		@graph = new Graph(@)
+
+		@viewer = new Viewer(@)
+		ko.applyBindings @viewer
 
 		@initSvg()
 		
 		@force = d3.layout.force()
-			.nodes(@nodes)
-			.links(@links)
+			.nodes(@graph.nodes)
+			.links(@graph.links)
 			.size([width, height])
 			.linkDistance(150)
 			.charge(-500)
 			.on('tick', @tick)
+
+		document.documentElement.style.overflow = 'hidden'  # firefox, chrome
+		document.body.scroll = "no" # ie only
+
+		d3.select(window).on('resize', @resize)
+		@resize()
 		
-		d3.select(window)
-			.on('keydown', @keydown)
-			.on('keyup', @keyup)
-
-
-		# modal validation
-
-
-
-
-
-
-
+	resize: =>
+		width = window.innerWidth
+		height = window.innerHeight
+		@svg.attr('height', height).attr("width", width)
+		@force.size([width, height])
 
 
 	resetMouseVars: =>
@@ -347,7 +346,7 @@ class App
 	tick: =>
 		# draw directed edges with proper padding from node centers
 
-		for node in @nodes
+		for node in @graph.nodes
 
 			node.dx = node.x * @scale
 			node.dx = node.dx + @delta.x
@@ -398,7 +397,7 @@ class App
 	restart: =>
 		th = @
 		# path (link) group
-		@path = @path.data(@links, (d) -> d._id)
+		@path = @path.data(@graph.links, (d) -> d._id)
 
 		# update existing links
 		@path.selectAll('path.link')
@@ -428,15 +427,17 @@ class App
 					th.selected_link = null
 				else 
 					th.selected_link = th.mousedown_link
+
 				th.selected_node = null
 				th.restart()
+				th.viewer.load()
 			)
 
 		p.append('svg:path')
 			.attr('class', 'forText')
 			.attr('id', (d) -> "text_" + d._id)
 
-		texPa = p.append("svg:text")
+		p.append("svg:text")
 			.attr('dy', -5)
 			.attr('text-anchor', 'middle')
 		.append("svg:textPath")
@@ -453,31 +454,37 @@ class App
 
 		# circle (node) group
 		# NB: the function arg is crucial here! nodes are known by id, not by index!
-		@circle = @circle.data(@nodes, (d) -> return d.id)
+		@circle = @circle.data(@graph.nodes, (d) -> return d._id)
 
 		# update existing nodes (reflexive & selected visual states)
 		@circle.selectAll('rect')
-			.style('fill', (d) -> return if d == th.selected_node then d3.rgb(colors(d.id)).brighter().toString() else colors(d.id))
+			.style('fill', (d) -> 
+				return d.color if d.color?				
+				if d == th.selected_node then d3.rgb(colors(d._id)).brighter().toString() else colors(d._id))
 			.classed('reflexive', (d) ->  d.fixed)
 
 		@circle.selectAll('text')
 			.text((d) -> return d.text)
 
-
-		# add new nodes
 		g = @circle.enter().append('svg:g')
-
-		g.append('svg:rect')
-			.attr('class', 'node')
-			.style('fill', (d) -> return if d == th.selected_node then d3.rgb(colors(d.id)).brighter().toString() else colors(d.id))
-			.style('stroke', (d) -> return d3.rgb(colors(d.id)).darker().toString())
-			.classed('reflexive', (d) -> return d.reflexive?)
 			.on('mouseover', (d) ->
 				#return if(!th.mousedown_node || d == th.mousedown_node)
 				# enlarge target node
-				d3.select(this).attr('transform', 'scale(1.5)')
-				console.log d3.select(this)
+				# d3.select(this).select('rect').attr('transform', 'scale(2.5)')
+				# d3.select(this).select('text').append('svg:tspan')
+				# 	.text("toto")
+				#for x in d.attr
 			)
+
+		g.append('svg:rect')
+			.attr('class', 'node')
+			.style('fill', (d) -> 
+				return d.color if d.color?
+				if d == th.selected_node then d3.rgb(colors(d._id)).brighter().toString() else colors(d._id))
+			.style('stroke', (d) ->
+				return d.strokeColor if d.strokeColor?
+				d3.rgb(colors(d._id)).darker().toString())
+			.classed('reflexive', (d) -> return d.reflexive?)
 			.on('mouseout', (d) ->
 				#alsaasddreturn if(!th.mousedown_node || d == th.mousedown_node)
 				# unenlarge target node
@@ -489,6 +496,7 @@ class App
 				th.mousedown_node = d
 				th.selected_node = th.mousedown_node
 				th.selected_link = null
+				th.viewer.load()
 
 				return if(d3.event.ctrlKey)
 				# reposition drag line
@@ -521,7 +529,7 @@ class App
 				source = -1
 				target = -1
 				direction = -1
-				if th.mousedown_node.id < th.mouseup_node.id
+				if th.mousedown_node._id < th.mouseup_node._id
 					source = th.mousedown_node
 					target = th.mouseup_node
 					direction = 'right'
@@ -530,26 +538,13 @@ class App
 					target = th.mousedown_node
 					direction = 'left'
 				
-				link = -1
-				link = th.links.filter((l) ->
-					return (l.source == source && l.target == target);
-				)[0]
 
-				if link
-					link[direction] = true
-					sio.emit 'editLink', link
-				else
-					link = {source: source, target: target, left: false, right: false}
-					link[direction] = true
-					sio.emit 'addLink', link, (res) ->
-						link.id = res
-						th.links.push link
-						th.restart()
+				
+
+
 
 				# select new link
-				th.selected_link = link
-				th.selected_node = null
-				th.restart()
+				th.graph.addLink source, target, direction
 			)
 
 		# show link label
@@ -560,6 +555,7 @@ class App
 			.attr('y', 4)
 			.attr('class', 'id')
 			.text((d) -> return d.text)
+
 
 		@circle.selectAll('rect')
 			.attr('width', (d) -> d.width = $(@).next().innerWidth() + 8)
@@ -580,122 +576,89 @@ class App
 		else
 			@tick()
 
-	spliceLinksForNode: (node) =>
-		toSplice = @links.filter((l) ->
-			return (l.source == node || l.target == node);
+
+
+
+	dragKeyDown: =>
+		@circle.call(d3.behavior.drag()
+			.on("dragstart", =>
+				#@mousedown_node.x = 0
+				@force.stop()
+				#d3.event.x *= @scale
+				#d3.event.y *= @scale
+			)
+			.on("drag", =>
+				@mousedown_node.px += d3.event.dx / @scale
+				@mousedown_node.py += d3.event.dy / @scale
+				@mousedown_node.x += d3.event.dx / @scale
+				@mousedown_node.y += d3.event.dy / @scale
+				@tick()
+			)
+			.on("dragend", (d, i) =>
+				sio.emit 'editNode', d
+				@force.resume()
+			)
 		)
-		toSplice.map((l) => 
-			sio.emit 'rmLink', l._id
-			@links.splice(@links.indexOf(l), 1)
-		)
+		@svg.classed('ctrl', true)
+		
+	dragKeyUp: =>
+		@circle
+			.on('mousedown.drag', null)
+			.on('touchstart.drag', null)
+		@svg.classed('ctrl', false)
 
 
-	keydown: =>
-		if $('#texter:focus')[0]?
-			if d3.event.keyCode == 13
-				@changeText $('#texter:focus').val()
-				$('#texter:focus').val('').blur()
-			else if d3.event.keyCode == 27
-				console.log d3.event.keyCode
-				$('#texter').blur()
-		else
-			return if @lastKeyDown != -1
-			@lastKeyDown = d3.event.keyCode
+	delCurrentSelection: =>
+		if @selected_node
+			@graph.delNode @selected_node
+			@selected_node = null
+		else if @selected_link
+			@graph.delLink @selected_link
+			@selected_link = null
+		@restart()
 
-			# ctrl
-			if d3.event.keyCode == 17
-				@circle.call(d3.behavior.drag()
-					.on("dragstart", =>
-						#@mousedown_node.x = 0
-						@force.stop()
-						#d3.event.x *= @scale
-						#d3.event.y *= @scale
-					)
-					.on("drag", =>
-						console.log "d", d3.event
-						@mousedown_node.px += d3.event.dx / @scale
-						@mousedown_node.py += d3.event.dy / @scale
-						@mousedown_node.x += d3.event.dx / @scale
-						@mousedown_node.y += d3.event.dy / @scale
-						@tick()
-					)
-					.on("dragend", (d, i) =>
-						console.log "dragend", d, i
-						sio.emit 'editNode', d
-						@force.resume()
-					)
-				)
-				@svg.classed('ctrl', true)
-			console.log d3.event.keyCode
-			return if !@selected_node && !@selected_link
-			switch d3.event.keyCode
-				when 8, 46  # backspace, delete
-					return if $('#myModal').attr("aria-hidden") == "false"
-					if @selected_node
-						@nodes.splice(@nodes.indexOf(@selected_node), 1)
-						@spliceLinksForNode(@selected_node)
-						sio.emit 'rmNode', @selected_node.id
-					else if @selected_link
-						sio.emit 'rmLink', @selected_link._id
-						@links.splice(@links.indexOf(@selected_link), 1)
-					@selected_link = null
-
-					@selected_node = null
-					@restart()
-				when 66 # B
-					if @selected_link
-						# set link direction to both left and right
-						@selected_link.left = true
-						@selected_link.right = true
-						sio.emit 'editLink', @selected_link
-					@restart()
-				when 76 # L
-					if @selected_link
-						# set link direction to left only
-						@selected_link.left = true
-						@selected_link.right = false
-						sio.emit 'editLink', @selected_link
-					@restart()
-				when 82 # R
-					if @selected_node
-						# toggle node reflexivity
-						@selected_node.reflexive = !@selected_node.reflexive;
-						sio.emit 'editNode', @selected_node
-					else if @selected_link
-						# set link direction to right only
-						@selected_link.left = false
-						@selected_link.right = true
-						sio.emit 'editLink', @selected_link
-					@restart()
-				when 83 # S
-					return if !@selected_node? || $('#myModal').attr("aria-hidden") == "false"
-					@selected_node.fixed = !@selected_node.fixed
-					sio.emit 'editNode', @selected_node
-				when 13
-					n.modal()
-
-
-
-	keyup: =>
-		@lastKeyDown = -1
-
-		# ctrl
-		if d3.event.keyCode == 17
-			@circle
-				.on('mousedown.drag', null)
-				.on('touchstart.drag', null)
-			@svg.classed('ctrl', false)
-
-
-
-
-
+	nodeFixer: =>
+		return if !@selected_node? || $('#myModal').attr("aria-hidden") == "false"
+		@selected_node.fixed = !@selected_node.fixed
+		sio.emit 'editNode', @selected_node
 
 # app starts here
 window.app = app = new App()
-#ko controller
-window.n = n = new Node(app)
-ko.applyBindings n
+
+
+
+		
+
+
+		# when 66 # B
+		# 	if @selected_link
+		# 		# set link direction to both left and right
+		# 		@selected_link.left = true
+		# 		@selected_link.right = true
+		# 		sio.emit 'editLink', @selected_link
+		# 	@restart()
+		# when 76 # L
+		# 	if @selected_link
+		# 		# set link direction to left only
+		# 		@selected_link.left = true
+		# 		@selected_link.right = false
+		# 		sio.emit 'editLink', @selected_link
+		# 	@restart()
+		# when 82 # R
+		# 	if @selected_node
+		# 		# toggle node reflexivity
+		# 		@selected_node.reflexive = !@selected_node.reflexive;
+		# 		sio.emit 'editNode', @selected_node
+		# 	else if @selected_link
+		# 		# set link direction to right only
+		# 		@selected_link.left = false
+		# 		@selected_link.right = true
+		# 		sio.emit 'editLink', @selected_link
+		# 	@restart()
+
+		# when 13
+		# 	@viewer.modal()
+
 
 connected = false
 
@@ -705,25 +668,23 @@ sio.on 'connect', ->
 	sio.emit 'graphInit', href.slice href.lastIndexOf('/') + 1 if !connected
 
 sio.on 'graphInit', (graph) ->
-	console.log graph
 	connected = true
 
 	for node in graph.nodes
-		node.id = node._id
-		app.nodes.push node
+		app.graph.nodes.push new Node node
 	for link in graph.links
-		len = app.nodes.length
+		len = app.graph.nodes.length
 		i = 0
-		while i < len && app.nodes[i].id != link.target
+		while i < len && app.graph.nodes[i]._id != link.target
 			i++
 		if i < len
-			link.target = app.nodes[i]
+			link.target = app.graph.nodes[i]
 			i = 0
-			while i < len && app.nodes[i].id != link.source
+			while i < len && app.graph.nodes[i]._id != link.source
 				i++
 			if i < len
-				link.source = app.nodes[i]
-				app.links.push link
+				link.source = app.graph.nodes[i]
+				app.graph.links.push link
 			else
 				sio.emit 'rmLink', link._id
 		else
@@ -732,64 +693,72 @@ sio.on 'graphInit', (graph) ->
 	app.restart()
 
 sio.on 'addNode', (node) ->
-	node.id = node._id
-	app.nodes.push node
+	app.graph.nodes.push node
 	app.restart()
 
 sio.on 'editNode', (node) ->
-	len = app.nodes.length
+	len = app.graph.nodes.length
 	i = 0
-	while i < len && app.nodes[i].id != node._id
+	while i < len && app.graph.nodes[i]._id != node._id
 		i++
-	console.log node
-	app.nodes[i].text = node.text
-	app.nodes[i].reflexive = node.reflexive
-	app.nodes[i].fixed = node.fixed
-	app.nodes[i].x = node.x
-	app.nodes[i].y = node.y
+	app.graph.nodes[i].text = node.text
+	app.graph.nodes[i].reflexive = node.reflexive
+	app.graph.nodes[i].fixed = node.fixed
+	app.graph.nodes[i].x = node.x
+	app.graph.nodes[i].y = node.y
 
 	app.restart()
 
 sio.on 'rmNode', (id) ->
-	len = app.nodes.length
+	len = app.graph.nodes.length
 	i = 0
-	while i < len && app.nodes[i].id != id
+	while i < len && app.graph.nodes[i]._id != id
 		i++
-	app.nodes.splice i, 1
-	toSplice = app.links.filter((l) ->
-		return (l.source.id == id || l.target.id == id);
+	app.graph.nodes.splice i, 1
+	toSplice = app.graph.links.filter((l) ->
+		return (l.source._id == id || l.target._id == id);
 	)
 	toSplice.map((l) => 
-		app.links.splice(app.links.indexOf(l), 1)
+		app.graph.links.splice(app.graph.links.indexOf(l), 1)
 	)
 	app.restart()
 
 sio.on 'addLink', (link) ->
-	len = app.nodes.length
+	len = app.graph.nodes.length
 	i = 0
-	while i < len && app.nodes[i].id != link.target
+	while i < len && app.graph.nodes[i]._id != link.target
 		i++
-	link.target = app.nodes[i]
+	link.target = app.graph.nodes[i]
 	i = 0
-	while i < len && app.nodes[i].id != link.source
+	while i < len && app.graph.nodes[i]._id != link.source
 		i++
-	link.source = app.nodes[i]
+	link.source = app.graph.nodes[i]
 
-	app.links.push link
+	app.graph.links.push link
 	app.restart()
 
 sio.on 'editLink', (link) ->
-	len = app.links.length
+	len = app.graph.links.length
 	i = 0
-	while i < len && app.links[i]._id != link.id
+	while i < len && app.graph.links[i]._id != link._id
 		i++
 	app.link[i] = link
 	app.restart()
 
 sio.on 'rmLink', (id) ->
-	len = app.links.length
+	len = app.graph.links.length
 	i = 0
-	while i < len && app.links[i]._id != id
+	while i < len && app.graph.links[i]._id != id
 		i++
-	app.links.splice i, 1
+	app.graph.links.splice i, 1
 	app.restart()
+
+
+Mousetrap
+	.bind(['f', 'enter'], app.viewer.modal)
+	.bind('del', app.delCurrentSelection)
+	.bind('s', app.nodeFixer)
+	.bind('ctrl', app.dragKeyDown, 'keydown')
+	.bind('ctrl', app.dragKeyUp, 'keyup')
+	.bind('x o', app.viewer.modal)
+	.bind('n', app.graph.addNode)
