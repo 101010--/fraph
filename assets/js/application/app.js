@@ -144,7 +144,8 @@
 
     Viewer.prototype.modRm = function(th) {
       this.Attr(th.name, void 0, true);
-      return this.app.selected_node.attr = ko.toJS(this.attr().slice(1));
+      this.app.selected_node.attr = ko.toJS(this.attr().slice(1));
+      return sio.emit('editNode', this.app.selected_node);
     };
 
     return Viewer;

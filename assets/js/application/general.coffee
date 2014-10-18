@@ -98,6 +98,7 @@ class Viewer
 		# BADBADBAD
 		@Attr th.name, undefined, true
 		@app.selected_node.attr = ko.toJS(@attr()[1..])
+		sio.emit 'editNode', @app.selected_node
 
 
 colors = d3.scale.category10()
