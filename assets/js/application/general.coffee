@@ -155,8 +155,8 @@ class Graph
 		link = @links.filter((l) ->
 			l.source == source && l.target == target
 		)[0]
-
 		if link
+			link.left = link.right = -1
 			link[direction] = true
 			sio.emit 'editLink', link
 		else
@@ -172,7 +172,7 @@ class Graph
 
 	delLink: (l) =>
 		@links.splice(@links.indexOf(l), 1)
-		sio.emit 'rmLink', n._id
+		sio.emit 'rmLink', l._id
 
 	spliceLinksForNode: (node) =>
 		toSplice = @links.filter((l) ->
@@ -246,7 +246,7 @@ class App
 			@scale -= scaleVal
 			@delta.x += widthMid
 			@delta.y += heightMid
-		#d3.select('svg').selectAll('g').attr('transform', => "scale(#{@scale})").selectAll('g').attr('transform', => "scale(#{@scale})")
+		d3.select('svg').selectAll('g').attr('transform', => "scale(#{@scale})")
 		@restart()
 
 	initSvg: =>

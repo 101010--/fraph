@@ -254,6 +254,7 @@
         return l.source === source && l.target === target;
       })[0];
       if (link) {
+        link.left = link.right = -1;
         link[direction] = true;
         return sio.emit('editLink', link);
       } else {
@@ -278,7 +279,7 @@
 
     Graph.prototype.delLink = function(l) {
       this.links.splice(this.links.indexOf(l), 1);
-      return sio.emit('rmLink', n._id);
+      return sio.emit('rmLink', l._id);
     };
 
     Graph.prototype.spliceLinksForNode = function(node) {
@@ -340,7 +341,8 @@
     };
 
     App.prototype.svgMouseWheel = function() {
-      var heightMid, scaleVal, widthMid;
+      var heightMid, scaleVal, widthMid,
+        _this = this;
       scaleVal = 0.04;
       widthMid = window.innerWidth * scaleVal / 2;
       heightMid = window.innerHeight * scaleVal / 2;
@@ -353,6 +355,9 @@
         this.delta.x += widthMid;
         this.delta.y += heightMid;
       }
+      d3.select('svg').selectAll('g').attr('transform', function() {
+        return "scale(" + _this.scale + ")";
+      });
       return this.restart();
     };
 
